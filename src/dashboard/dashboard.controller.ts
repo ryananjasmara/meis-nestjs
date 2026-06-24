@@ -1,5 +1,5 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { DashboardService } from './dashboard.service';
 
@@ -11,6 +11,10 @@ export class DashboardController {
   constructor(private dashboardService: DashboardService) {}
 
   @Get('summary')
+  @ApiOperation({
+    summary:
+      'Get dashboard summary: totals, revenue, status breakdown, recent invoices',
+  })
   summary() {
     return this.dashboardService.summary();
   }
