@@ -65,7 +65,10 @@ export class InvoicesService {
     return this.prisma.$transaction(async (tx) => {
       await tx.invoiceItem.create({ data: { ...itemRow, invoiceId } });
       const items = await tx.invoiceItem.findMany({ where: { invoiceId } });
-      const totalAmount = items.reduce((sum, item) => sum.plus(item.total), new Prisma.Decimal(0));
+      const totalAmount = items.reduce(
+        (sum, item) => sum.plus(item.total),
+        new Prisma.Decimal(0),
+      );
       return tx.invoice.update({
         where: { id: invoiceId },
         data: { totalAmount },
