@@ -65,11 +65,11 @@ async function main() {
       createdById: admin.id,
       status: InvoiceStatus.PAID,
       dueDate: new Date('2026-05-15'),
-      totalAmount: 450,
+      totalAmount: 5500000,
       items: {
         create: [
-          itemRow('Website design services', 2, 150),
-          itemRow('Hosting (monthly)', 1, 150),
+          itemRow('Website design services', 2, 2500000),
+          itemRow('Hosting (monthly)', 1, 500000),
         ],
       },
     },
@@ -83,11 +83,11 @@ async function main() {
       status: InvoiceStatus.SENT,
       dueDate: new Date('2026-07-01'),
       notes: 'Net 30',
-      totalAmount: 825,
+      totalAmount: 4100000,
       items: {
         create: [
-          itemRow('Consulting hours', 5, 150),
-          itemRow('Domain renewal', 1, 75),
+          itemRow('Consulting hours', 5, 750000),
+          itemRow('Domain renewal', 1, 350000),
         ],
       },
     },
@@ -100,9 +100,9 @@ async function main() {
       createdById: admin.id,
       status: InvoiceStatus.DRAFT,
       dueDate: new Date('2026-07-20'),
-      totalAmount: 1200,
+      totalAmount: 12000000,
       items: {
-        create: [itemRow('Annual support contract', 1, 1200)],
+        create: [itemRow('Annual support contract', 1, 12000000)],
       },
     },
   });
@@ -114,9 +114,9 @@ async function main() {
       createdById: staff.id,
       status: InvoiceStatus.OVERDUE,
       dueDate: new Date('2026-05-01'),
-      totalAmount: 300,
+      totalAmount: 2000000,
       items: {
-        create: [itemRow('Logo redesign', 1, 300)],
+        create: [itemRow('Logo redesign', 1, 2000000)],
       },
     },
   });
