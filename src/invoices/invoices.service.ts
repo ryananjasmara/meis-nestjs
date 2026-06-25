@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client';
 import { InvoiceStatus } from '../../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
@@ -59,21 +63,55 @@ export class InvoicesService {
   }
 
   async addItem(invoiceId: string, dto: CreateInvoiceItemDto) {
-    await this.findOne(invoiceId);
+    const invoice = await this.findOne(invoiceId);
+    this.assertDraft(invoice.status);
     const itemRow = this.toItemRow(dto);
 
     return this.prisma.$transaction(async (tx) => {
       await tx.invoiceItem.create({ data: { ...itemRow, invoiceId } });
-      const items = await tx.invoiceItem.findMany({ where: { invoiceId } });
-      const totalAmount = items.reduce(
-        (sum, item) => sum.plus(item.total),
-        new Prisma.Decimal(0),
+      return this.recalculateTotal(tx, invoiceId);
+    });
+  }
+
+  async removeItem(invoiceId: string, itemId: string) {
+    const invoice = await this.findOne(invoiceId);
+    this.assertDraft(invoice.status);
+
+    const item = invoice.items.find((i) => i.id === itemId);
+    if (!item) {
+      throw new NotFoundException(`Item ${itemId} not found on this invoice`);
+    }
+    if (invoice.items.length === 1) {
+      throw new BadRequestException('An invoice must have at least one item');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.invoiceItem.delete({ where: { id: itemId } });
+      return this.recalculateTotal(tx, invoiceId);
+    });
+  }
+
+  private assertDraft(status: InvoiceStatus) {
+    if (status !== InvoiceStatus.DRAFT) {
+      throw new BadRequestException(
+        'Only draft invoices can have their items modified',
       );
-      return tx.invoice.update({
-        where: { id: invoiceId },
-        data: { totalAmount },
-        include: { customer: true, items: true },
-      });
+    }
+  }
+
+  private async recalculateTotal(
+    tx: Prisma.TransactionClient,
+    invoiceId: string,
+  ) {
+    const items = await tx.invoiceItem.findMany({ where: { invoiceId } });
+    const totalAmount = items.reduce(
+      (sum, item) => sum.plus(item.total),
+      new Prisma.Decimal(0),
+    );
+    return tx.invoice.update({
+      where: { id: invoiceId },
+      data: { totalAmount },
+      include: { customer: true, items: true },
     });
   }
 

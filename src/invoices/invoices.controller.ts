@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -49,8 +50,18 @@ export class InvoicesController {
   }
 
   @Post(':id/items')
-  @ApiOperation({ summary: 'Add a line item to an existing invoice' })
+  @ApiOperation({
+    summary: 'Add a line item to an existing invoice (draft only)',
+  })
   addItem(@Param('id') id: string, @Body() dto: CreateInvoiceItemDto) {
     return this.invoicesService.addItem(id, dto);
+  }
+
+  @Delete(':id/items/:itemId')
+  @ApiOperation({
+    summary: 'Remove a line item from an existing invoice (draft only)',
+  })
+  removeItem(@Param('id') id: string, @Param('itemId') itemId: string) {
+    return this.invoicesService.removeItem(id, itemId);
   }
 }
