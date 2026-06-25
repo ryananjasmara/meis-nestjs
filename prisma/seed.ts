@@ -20,7 +20,7 @@ async function main() {
     update: {},
     create: {
       email: 'admin@meis.test',
-      name: 'Ada Admin',
+      name: 'Budi Santoso',
       password: passwordHash,
       role: Role.ADMIN,
     },
@@ -31,7 +31,7 @@ async function main() {
     update: {},
     create: {
       email: 'staff@meis.test',
-      name: 'Sam Staff',
+      name: 'Siti Rahayu',
       password: passwordHash,
       role: Role.STAFF,
     },
@@ -39,20 +39,21 @@ async function main() {
 
   const acme = await prisma.customer.create({
     data: {
-      name: 'Acme Corp',
-      email: 'billing@acme.test',
-      phone: '+1 555 0100',
-      address: '123 Main St, Springfield',
+      name: 'PT Maju Bersama',
+      email: 'billing@majubersama.test',
+      phone: '+62 21 5551234',
+      address:
+        'Jl. Jenderal Sudirman No. 45, Jakarta Selatan, DKI Jakarta 12190',
       createdById: admin.id,
     },
   });
 
   const globex = await prisma.customer.create({
     data: {
-      name: 'Globex Inc',
-      email: 'ap@globex.test',
-      phone: '+1 555 0199',
-      address: '1 Industrial Way, Cypress Creek',
+      name: 'PT Sejahtera Abadi',
+      email: 'ap@sejahteraabadi.test',
+      phone: '+62 812 3456 7890',
+      address: 'Jl. Diponegoro No. 12, Bandung, Jawa Barat 40115',
       createdById: staff.id,
     },
   });
