@@ -41,7 +41,7 @@ async function main() {
     data: {
       name: 'PT Maju Bersama',
       email: 'billing@majubersama.test',
-      phone: '+62 21 5551234',
+      phone: '+62215551234',
       address:
         'Jl. Jenderal Sudirman No. 45, Jakarta Selatan, DKI Jakarta 12190',
       createdById: admin.id,
@@ -52,7 +52,7 @@ async function main() {
     data: {
       name: 'PT Sejahtera Abadi',
       email: 'ap@sejahteraabadi.test',
-      phone: '+62 812 3456 7890',
+      phone: '+6281234567890',
       address: 'Jl. Diponegoro No. 12, Bandung, Jawa Barat 40115',
       createdById: staff.id,
     },
