@@ -9,6 +9,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { CreateInvoiceItemDto } from './dto/create-invoice-item.dto';
 
+export type FindAllInvoicesParams = {
+  status?: InvoiceStatus;
+  customerId?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+};
+
 @Injectable()
 export class InvoicesService {
   constructor(private prisma: PrismaService) {}
@@ -34,12 +42,42 @@ export class InvoicesService {
     });
   }
 
-  findAll(status?: InvoiceStatus) {
-    return this.prisma.invoice.findMany({
-      where: status ? { status } : undefined,
-      include: { customer: true, items: true },
-      orderBy: { createdAt: 'desc' },
-    });
+  async findAll(params: FindAllInvoicesParams = {}) {
+    const page = params.page && params.page > 0 ? params.page : 1;
+    const limit = params.limit && params.limit > 0 ? params.limit : 10;
+
+    const where: Prisma.InvoiceWhereInput = {};
+    if (params.status) where.status = params.status;
+    if (params.customerId) where.customerId = params.customerId;
+    if (params.search) {
+      where.OR = [
+        { invoiceNumber: { contains: params.search, mode: 'insensitive' } },
+        {
+          customer: { name: { contains: params.search, mode: 'insensitive' } },
+        },
+      ];
+    }
+
+    const [data, total] = await Promise.all([
+      this.prisma.invoice.findMany({
+        where,
+        include: { customer: true, items: true },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.invoice.count({ where }),
+    ]);
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+    };
   }
 
   async findOne(id: string) {

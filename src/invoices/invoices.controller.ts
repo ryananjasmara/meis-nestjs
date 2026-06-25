@@ -32,9 +32,24 @@ export class InvoicesController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List invoices, optionally filtered by status' })
-  findAll(@Query('status') status?: InvoiceStatus) {
-    return this.invoicesService.findAll(status);
+  @ApiOperation({
+    summary:
+      'List invoices, with optional status/customer filter, search, and pagination',
+  })
+  findAll(
+    @Query('status') status?: InvoiceStatus,
+    @Query('customerId') customerId?: string,
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.invoicesService.findAll({
+      status,
+      customerId,
+      search,
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+    });
   }
 
   @Get(':id')

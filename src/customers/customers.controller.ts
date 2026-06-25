@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -29,9 +30,19 @@ export class CustomersController {
   }
 
   @Get()
-  @ApiOperation({ summary: 'List all customers' })
-  findAll() {
-    return this.customersService.findAll();
+  @ApiOperation({
+    summary: 'List customers, with optional search and pagination',
+  })
+  findAll(
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.customersService.findAll({
+      search,
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+    });
   }
 
   @Get(':id')
