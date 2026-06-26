@@ -8,6 +8,8 @@ import { InvoiceStatus } from '../../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { CreateInvoiceItemDto } from './dto/create-invoice-item.dto';
+import { UpdateInvoiceDto } from './dto/update-invoice.dto';
+import { UpdateInvoiceItemDto } from './dto/update-invoice-item.dto';
 
 export type FindAllInvoicesParams = {
   status?: InvoiceStatus;
@@ -97,6 +99,44 @@ export class InvoicesService {
       where: { id },
       data: { status },
       include: { customer: true, items: true },
+    });
+  }
+
+  async update(id: string, dto: UpdateInvoiceDto) {
+    const invoice = await this.findOne(id);
+    this.assertDraft(invoice.status);
+
+    return this.prisma.invoice.update({
+      where: { id },
+      data: { dueDate: new Date(dto.dueDate) },
+      include: { customer: true, items: true },
+    });
+  }
+
+  async updateItem(
+    invoiceId: string,
+    itemId: string,
+    dto: UpdateInvoiceItemDto,
+  ) {
+    const invoice = await this.findOne(invoiceId);
+    this.assertDraft(invoice.status);
+
+    const item = invoice.items.find((i) => i.id === itemId);
+    if (!item) {
+      throw new NotFoundException(`Item ${itemId} not found on this invoice`);
+    }
+
+    const description = dto.description ?? item.description;
+    const quantity = dto.quantity ?? item.quantity;
+    const unitPrice = dto.unitPrice ?? Number(item.unitPrice);
+    const total = new Prisma.Decimal(unitPrice).times(quantity);
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.invoiceItem.update({
+        where: { id: itemId },
+        data: { description, quantity, unitPrice, total },
+      });
+      return this.recalculateTotal(tx, invoiceId);
     });
   }
 

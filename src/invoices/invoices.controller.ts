@@ -15,6 +15,8 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { InvoiceStatus } from '../../generated/prisma/enums';
 import { CreateInvoiceItemDto } from './dto/create-invoice-item.dto';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
+import { UpdateInvoiceDto } from './dto/update-invoice.dto';
+import { UpdateInvoiceItemDto } from './dto/update-invoice-item.dto';
 import { UpdateInvoiceStatusDto } from './dto/update-invoice-status.dto';
 import { InvoicesService } from './invoices.service';
 
@@ -64,12 +66,30 @@ export class InvoicesController {
     return this.invoicesService.updateStatus(id, dto.status);
   }
 
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update an invoice due date (draft only)' })
+  update(@Param('id') id: string, @Body() dto: UpdateInvoiceDto) {
+    return this.invoicesService.update(id, dto);
+  }
+
   @Post(':id/items')
   @ApiOperation({
     summary: 'Add a line item to an existing invoice (draft only)',
   })
   addItem(@Param('id') id: string, @Body() dto: CreateInvoiceItemDto) {
     return this.invoicesService.addItem(id, dto);
+  }
+
+  @Patch(':id/items/:itemId')
+  @ApiOperation({
+    summary: 'Update a line item on an existing invoice (draft only)',
+  })
+  updateItem(
+    @Param('id') id: string,
+    @Param('itemId') itemId: string,
+    @Body() dto: UpdateInvoiceItemDto,
+  ) {
+    return this.invoicesService.updateItem(id, itemId, dto);
   }
 
   @Delete(':id/items/:itemId')
