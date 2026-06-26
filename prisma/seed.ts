@@ -190,7 +190,7 @@ async function main() {
 
   const users = [admin, staff];
 
-  const customers = [];
+  const customers: Awaited<ReturnType<typeof prisma.customer.create>>[] = [];
   for (const c of CUSTOMERS) {
     const slug = c.name
       .toLowerCase()
