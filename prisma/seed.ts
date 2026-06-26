@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcryptjs';
 import { PrismaClient } from '../generated/prisma/client';
-import { InvoiceStatus, Role } from '../generated/prisma/enums';
+import { Currency, InvoiceStatus, Role } from '../generated/prisma/enums';
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
@@ -190,7 +190,7 @@ async function main() {
 
   const users = [admin, staff];
 
-  const customers = [];
+  const customers: Awaited<ReturnType<typeof prisma.customer.create>>[] = [];
   for (const c of CUSTOMERS) {
     const slug = c.name
       .toLowerCase()
@@ -227,6 +227,10 @@ async function main() {
     const dueOffsetDays = randomInt(-45, 45);
     const dueDate = new Date(Date.now() + dueOffsetDays * 24 * 60 * 60 * 1000);
 
+    const isUsd = i % 4 === 0;
+    const currency = isUsd ? Currency.USD : Currency.IDR;
+    const exchangeRate = isUsd ? randomInt(15800, 16200) : 1;
+
     await prisma.invoice.create({
       data: {
         invoiceNumber: `INV-SEED-${String(i).padStart(4, '0')}`,
@@ -234,6 +238,8 @@ async function main() {
         createdById: owner.id,
         status,
         dueDate,
+        currency,
+        exchangeRate,
         notes: i % 5 === 0 ? 'Net 30' : undefined,
         totalAmount,
         items: { create: items },

@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client';
-import { InvoiceStatus } from '../../generated/prisma/enums';
+import { Currency, InvoiceStatus } from '../../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { CreateInvoiceItemDto } from './dto/create-invoice-item.dto';
@@ -29,12 +29,18 @@ export class InvoicesService {
       (sum, item) => sum.plus(item.total),
       new Prisma.Decimal(0),
     );
+    const { currency, exchangeRate } = this.resolveCurrency(
+      dto.currency,
+      dto.exchangeRate,
+    );
 
     return this.prisma.invoice.create({
       data: {
         invoiceNumber: this.generateInvoiceNumber(),
         customerId: dto.customerId,
         dueDate: new Date(dto.dueDate),
+        currency,
+        exchangeRate,
         notes: dto.notes,
         totalAmount,
         createdById: userId,
@@ -106,11 +112,24 @@ export class InvoicesService {
     const invoice = await this.findOne(id);
     this.assertDraft(invoice.status);
 
+    const currencyChanged =
+      dto.currency !== undefined || dto.exchangeRate !== undefined;
+    const resolved = currencyChanged
+      ? this.resolveCurrency(
+          dto.currency ?? invoice.currency,
+          dto.exchangeRate ?? Number(invoice.exchangeRate),
+        )
+      : undefined;
+
     return this.prisma.invoice.update({
       where: { id },
       data: {
         ...(dto.dueDate !== undefined && { dueDate: new Date(dto.dueDate) }),
         ...(dto.notes !== undefined && { notes: dto.notes }),
+        ...(resolved && {
+          currency: resolved.currency,
+          exchangeRate: resolved.exchangeRate,
+        }),
       },
       include: { customer: true, items: true },
     });
@@ -170,6 +189,25 @@ export class InvoicesService {
       await tx.invoiceItem.delete({ where: { id: itemId } });
       return this.recalculateTotal(tx, invoiceId);
     });
+  }
+
+  private resolveCurrency(currency?: Currency, exchangeRate?: number) {
+    const resolvedCurrency = currency ?? Currency.IDR;
+    if (resolvedCurrency === Currency.IDR) {
+      return {
+        currency: resolvedCurrency,
+        exchangeRate: new Prisma.Decimal(1),
+      };
+    }
+    if (!exchangeRate || exchangeRate <= 0) {
+      throw new BadRequestException(
+        'exchangeRate is required and must be greater than 0 for non-IDR currencies',
+      );
+    }
+    return {
+      currency: resolvedCurrency,
+      exchangeRate: new Prisma.Decimal(exchangeRate),
+    };
   }
 
   private assertDraft(status: InvoiceStatus) {
