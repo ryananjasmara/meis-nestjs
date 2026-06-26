@@ -2,21 +2,21 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEmail, IsOptional, IsString } from 'class-validator';
 
 export class CreateCustomerDto {
-  @ApiProperty({ example: 'Acme Corp' })
+  @ApiProperty({ example: 'PT Cahaya Mas Cemerlang' })
   @IsString()
   name: string;
 
-  @ApiPropertyOptional({ example: 'billing@acme.com' })
+  @ApiPropertyOptional({ example: 'cahayamascemerlang@cms.com' })
   @IsOptional()
   @IsEmail()
   email?: string;
 
-  @ApiPropertyOptional({ example: '+1 555 0100' })
+  @ApiPropertyOptional({ example: '+62 812 3456 7890' })
   @IsOptional()
   @IsString()
   phone?: string;
 
-  @ApiPropertyOptional({ example: '123 Main St, Springfield' })
+  @ApiPropertyOptional({ example: 'Jl. Raya Cemerlang No. 123' })
   @IsOptional()
   @IsString()
   address?: string;
