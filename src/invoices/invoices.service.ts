@@ -108,7 +108,10 @@ export class InvoicesService {
 
     return this.prisma.invoice.update({
       where: { id },
-      data: { dueDate: new Date(dto.dueDate) },
+      data: {
+        ...(dto.dueDate !== undefined && { dueDate: new Date(dto.dueDate) }),
+        ...(dto.notes !== undefined && { notes: dto.notes }),
+      },
       include: { customer: true, items: true },
     });
   }
