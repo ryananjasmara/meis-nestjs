@@ -1,6 +1,6 @@
 # Mini ERP Invoicing System — Backend
 
-A NestJS + Prisma + PostgreSQL REST API for a mini ERP invoicing system: authentication, customer management, invoice creation/items/status, and dashboard summaries.
+A NestJS + Prisma + PostgreSQL REST API for a mini ERP invoicing system: authentication, customer management (with search/pagination), invoice creation/items/status (with draft-only editing), and dashboard summaries.
 
 ## Tech stack
 
@@ -44,13 +44,15 @@ A NestJS + Prisma + PostgreSQL REST API for a mini ERP invoicing system: authent
    npx prisma migrate dev
    ```
 
-5. (Optional) Seed sample data — two users (one ADMIN, one STAFF), two customers, and four invoices across different statuses:
+5. (Optional) Seed sample data — two users (one ADMIN, one STAFF), 15 Indonesian companies as customers, and 120 invoices spread across all statuses with randomized line items:
 
    ```bash
    npx prisma db seed
    ```
 
    Seeded logins: `admin@meis.test` / `password123` and `staff@meis.test` / `password123`.
+
+   Note: the seed script always creates fresh customers/invoices (it doesn't upsert them), so re-running it on a non-empty database adds more rows rather than replacing them. To get back to exactly 15 customers / 120 invoices, reset first: `npx prisma migrate reset` then `npx prisma db seed`.
 
 ## Running the app
 
@@ -69,7 +71,7 @@ Summary:
 
 - **User** (`id`, `email`, `password`, `name`, `role: ADMIN|STAFF`) — owns Customers and Invoices it created.
 - **Customer** (`id`, `name`, `email?`, `phone?`, `address?`, `createdById → User`) — has many Invoices.
-- **Invoice** (`id`, `invoiceNumber`, `status: DRAFT|SENT|PAID|OVERDUE|CANCELLED`, `issueDate`, `dueDate`, `totalAmount`, `customerId → Customer`, `createdById → User`) — has many InvoiceItems.
+- **Invoice** (`id`, `invoiceNumber`, `status: DRAFT|SENT|PAID|OVERDUE|CANCELLED`, `issueDate`, `dueDate`, `totalAmount`, `notes?`, `customerId → Customer`, `createdById → User`) — has many InvoiceItems.
 - **InvoiceItem** (`id`, `description`, `quantity`, `unitPrice`, `total`, `invoiceId → Invoice`, cascade-deleted with its invoice).
 
 ## API overview
@@ -77,11 +79,27 @@ Summary:
 | Module | Endpoints |
 |---|---|
 | Auth | `POST /auth/register`, `POST /auth/login` |
-| Customers | `POST /customers`, `GET /customers`, `GET /customers/:id`, `PATCH /customers/:id`, `DELETE /customers/:id` |
-| Invoices | `POST /invoices`, `GET /invoices?status=`, `GET /invoices/:id`, `PATCH /invoices/:id/status`, `POST /invoices/:id/items` |
+| Customers | `POST /customers`, `GET /customers?search=&page=&limit=`, `GET /customers/:id`, `PATCH /customers/:id`, `DELETE /customers/:id` |
+| Invoices | `POST /invoices`, `GET /invoices?status=&customerId=&search=&page=&limit=`, `GET /invoices/:id`, `PATCH /invoices/:id` (due date / notes, draft only), `PATCH /invoices/:id/status`, `POST /invoices/:id/items` (draft only), `PATCH /invoices/:id/items/:itemId` (draft only), `DELETE /invoices/:id/items/:itemId` (draft only) |
 | Dashboard | `GET /dashboard/summary` |
 
-All routes except `/auth/*` require a `Authorization: Bearer <token>` header. Full request/response shapes are documented in Swagger at `/docs`.
+All routes except `/auth/*` require an `Authorization: Bearer <token>` header. Full request/response shapes are documented in Swagger at `/docs`.
+
+`GET /customers` and `GET /invoices` return a paginated shape:
+
+```json
+{ "data": [...], "meta": { "total": 42, "page": 1, "limit": 10, "totalPages": 5 } }
+```
+
+`search` matches customer name/email/phone, or invoice number/customer name, case-insensitively.
+
+## Draft-only invoice editing
+
+Once an invoice leaves `DRAFT` status, its due date, notes, and line items become immutable — only the status itself can still change. This is enforced server-side (not just hidden in the UI):
+
+- `PATCH /invoices/:id`, `POST /invoices/:id/items`, `PATCH /invoices/:id/items/:itemId`, and `DELETE /invoices/:id/items/:itemId` all reject with `400 Bad Request` if the invoice isn't `DRAFT`.
+- Removing the last remaining item on an invoice is also rejected — every invoice must keep at least one line item.
+- Adding/updating/removing an item recalculates that item's `total` and the invoice's `totalAmount` in the same transaction.
 
 ## Architectural decisions & assumptions
 
@@ -89,8 +107,9 @@ All routes except `/auth/*` require a `Authorization: Bearer <token>` header. Fu
 - **`PrismaService` is a global module** so every feature module can inject it without re-importing — same role a shared DB client would play if these became separate services talking to a shared database, or separate databases behind a future API gateway.
 - **Driver adapter (`@prisma/adapter-pg`) instead of Prisma's built-in connector** — required by Prisma 7's client architecture; positions the app to swap in connection pooling (e.g. PgBouncer) or Postgres-specific tuning without touching application code.
 - **Money stored as `Decimal`, not `Float`** — avoids floating-point rounding errors on currency values.
-- **`Invoice.totalAmount` is denormalized** (computed at create/item-add time, not derived via a join on every read) — keeps list/dashboard queries cheap; the items remain the source of truth and the total is recalculated any time items change.
+- **`Invoice.totalAmount` is denormalized** (computed at create/item-change time, not derived via a join on every read) — keeps list/dashboard queries cheap; the items remain the source of truth and the total is recalculated any time items change.
 - **Invoice numbers are generated server-side** (`INV-YYYYMMDD-NNNN`) rather than client-supplied, to guarantee uniqueness and a consistent format.
+- **Pagination is offset-based** (`page`/`limit` → `skip`/`take`) rather than cursor-based — simpler to reason about and sufficient at this data scale; would need revisiting for very large tables.
 - **JWT carries `role`**, and a `RolesGuard` + `@Roles()` decorator exist as infrastructure for role-gating endpoints, though no endpoint currently restricts by role since the test spec didn't call for it — straightforward to apply to any route later (e.g. restricting customer deletion to `ADMIN`).
 - **No soft-deletes / audit log** — out of scope for the test's stated requirements; `createdById` on Customer/Invoice provides basic provenance.
 
