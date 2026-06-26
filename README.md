@@ -44,7 +44,13 @@ A NestJS + Prisma + PostgreSQL REST API for a mini ERP invoicing system: authent
    npx prisma migrate dev
    ```
 
-5. (Optional) Seed sample data — two users (one ADMIN, one STAFF), two customers, and four invoices across different statuses:
+5. Generate Prisma client:
+
+   ```bash
+   npx prisma generate
+   ```
+
+5. (Optional) Seed sample data
 
    ```bash
    npx prisma db seed
