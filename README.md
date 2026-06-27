@@ -1,14 +1,14 @@
 # Mini ERP Invoicing System — Backend
 
-A NestJS + Prisma + PostgreSQL REST API for a mini ERP invoicing system: authentication, customer management, invoice creation/items/status, and dashboard summaries.
+A NestJS + Prisma + PostgreSQL REST API for a mini ERP invoicing system: authentication, customer management, invoices with multi-currency and PPN, and dashboard summaries.
 
-## Tech stack
+## Tech stack used
 
 - **Framework:** NestJS 11
 - **Database:** PostgreSQL 16 (via Docker)
-- **ORM:** Prisma 7 (using the `@prisma/adapter-pg` driver adapter, required by Prisma 7's client architecture)
+- **ORM:** Prisma 7
 - **Auth:** JWT (`@nestjs/jwt`, `passport-jwt`), passwords hashed with `bcryptjs`
-- **Validation:** `class-validator` / `class-transformer`, enforced via a global `ValidationPipe`
+- **Validation:** `class-validator` / `class-transformer` via a global `ValidationPipe`
 - **API docs:** Swagger (`@nestjs/swagger`), served at `/docs`
 
 ## Prerequisites
@@ -16,7 +16,7 @@ A NestJS + Prisma + PostgreSQL REST API for a mini ERP invoicing system: authent
 - Node.js 20+
 - Docker Desktop (for the local PostgreSQL container)
 
-## Setup
+## Installation steps
 
 1. Install dependencies:
 
@@ -38,19 +38,14 @@ A NestJS + Prisma + PostgreSQL REST API for a mini ERP invoicing system: authent
    JWT_EXPIRES_IN="1d"
    ```
 
-4. Run migrations:
+4. Run migrations and generate the Prisma client:
 
    ```bash
    npx prisma migrate dev
-   ```
-
-5. Generate Prisma client:
-
-   ```bash
    npx prisma generate
    ```
 
-5. (Optional) Seed sample data
+5. (Optional) Seed sample data:
 
    ```bash
    npx prisma db seed
@@ -58,7 +53,7 @@ A NestJS + Prisma + PostgreSQL REST API for a mini ERP invoicing system: authent
 
    Seeded logins: `admin@meis.test` / `password123` and `staff@meis.test` / `password123`.
 
-## Running the app
+## Running the application locally
 
 ```bash
 npm run start:dev
@@ -75,7 +70,7 @@ Summary:
 
 - **User** (`id`, `email`, `password`, `name`, `role: ADMIN|STAFF`) — owns Customers and Invoices it created.
 - **Customer** (`id`, `name`, `email?`, `phone?`, `address?`, `createdById → User`) — has many Invoices.
-- **Invoice** (`id`, `invoiceNumber`, `status: DRAFT|SENT|PAID|OVERDUE|CANCELLED`, `issueDate`, `dueDate`, `totalAmount`, `customerId → Customer`, `createdById → User`) — has many InvoiceItems.
+- **Invoice** (`id`, `invoiceNumber`, `status: DRAFT|SENT|PAID|OVERDUE|CANCELLED`, `issueDate`, `dueDate`, `currency: IDR|USD`, `exchangeRate`, `totalAmount`, `isTaxable`, `vatRate`, `vatAmount`, `grandTotal`, `customerId → Customer`, `createdById → User`) — has many InvoiceItems.
 - **InvoiceItem** (`id`, `description`, `quantity`, `unitPrice`, `total`, `invoiceId → Invoice`, cascade-deleted with its invoice).
 
 ## API overview
@@ -84,21 +79,23 @@ Summary:
 |---|---|
 | Auth | `POST /auth/register`, `POST /auth/login` |
 | Customers | `POST /customers`, `GET /customers`, `GET /customers/:id`, `PATCH /customers/:id`, `DELETE /customers/:id` |
-| Invoices | `POST /invoices`, `GET /invoices?status=`, `GET /invoices/:id`, `PATCH /invoices/:id/status`, `POST /invoices/:id/items` |
+| Invoices | `POST /invoices`, `GET /invoices?status=&customerId=&search=`, `GET /invoices/:id`, `PATCH /invoices/:id`, `PATCH /invoices/:id/status`, `POST /invoices/:id/items`, `PATCH /invoices/:id/items/:itemId`, `DELETE /invoices/:id/items/:itemId` |
 | Dashboard | `GET /dashboard/summary` |
 
-All routes except `/auth/*` require a `Authorization: Bearer <token>` header. Full request/response shapes are documented in Swagger at `/docs`.
+All routes except `/auth/*` require an `Authorization: Bearer <token>` header. Full request/response shapes are documented in Swagger at `/docs`.
 
 ## Architectural decisions & assumptions
 
-- **Service/controller/module separation per feature** (`auth`, `customers`, `invoices`, `dashboard`), each independently testable and exportable — chosen so any of these could be lifted into its own microservice later without restructuring.
-- **`PrismaService` is a global module** so every feature module can inject it without re-importing — same role a shared DB client would play if these became separate services talking to a shared database, or separate databases behind a future API gateway.
-- **Driver adapter (`@prisma/adapter-pg`) instead of Prisma's built-in connector** — required by Prisma 7's client architecture; positions the app to swap in connection pooling (e.g. PgBouncer) or Postgres-specific tuning without touching application code.
-- **Money stored as `Decimal`, not `Float`** — avoids floating-point rounding errors on currency values.
-- **`Invoice.totalAmount` is denormalized** (computed at create/item-add time, not derived via a join on every read) — keeps list/dashboard queries cheap; the items remain the source of truth and the total is recalculated any time items change.
-- **Invoice numbers are generated server-side** (`INV-YYYYMMDD-NNNN`) rather than client-supplied, to guarantee uniqueness and a consistent format.
-- **JWT carries `role`**, and a `RolesGuard` + `@Roles()` decorator exist as infrastructure for role-gating endpoints, though no endpoint currently restricts by role since the test spec didn't call for it — straightforward to apply to any route later (e.g. restricting customer deletion to `ADMIN`).
-- **No soft-deletes / audit log** — out of scope for the test's stated requirements; `createdById` on Customer/Invoice provides basic provenance.
+- **One module per feature** (`auth`, `customers`, `invoices`, `dashboard`), each with its own controller/service — easy to split into separate microservices later without restructuring.
+- **`PrismaService` is a global module**, injected wherever needed instead of being re-imported per feature.
+- **Money stored as `Decimal`, not `Float`**, to avoid floating-point rounding errors.
+- **`Invoice.totalAmount` is denormalized** (computed when items change, not joined on every read) so list/dashboard queries stay cheap. Items remain the source of truth.
+- **Multi-currency (IDR/USD):** each invoice has its own `currency` and `exchangeRate`. The rate is a snapshot taken when the invoice is created (or edited while still `DRAFT`) — it is never re-derived from a "current" rate later, so past invoices and revenue reports don't shift if market rates change.
+- **PPN (VAT) is also snapshotted**, not computed from a live config value, for the same reason: changing the standard rate must only affect new invoices, never retroactively change old ones. `isTaxable` defaults to `true` for IDR invoices and `false` for non-IDR (export-of-services) invoices, but can be overridden per invoice while still `DRAFT`.
+- **`totalAmount` vs `grandTotal`:** dashboard "Revenue" uses `totalAmount` (pre-tax — PPN collected is owed to the tax office, not company income), while "Outstanding" uses `grandTotal` (what the customer actually still owes, including PPN).
+- **Invoice numbers are generated server-side** (`INV-YYYYMMDD-NNNN`), not client-supplied, to guarantee uniqueness and a consistent format.
+- **`RolesGuard` + `@Roles()` exist as infrastructure** for role-gating endpoints, though no endpoint currently restricts by role since the test spec didn't call for it.
+- **No soft-deletes / audit log** — out of scope for the test's stated requirements; `createdById` on Customer/Invoice gives basic provenance.
 
 ## Tests
 
