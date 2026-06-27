@@ -3,7 +3,6 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
-  IsBoolean,
   IsDateString,
   IsEnum,
   IsNumber,
@@ -39,15 +38,6 @@ export class CreateInvoiceDto {
   @IsNumber()
   @Min(0.000001)
   exchangeRate?: number;
-
-  @ApiPropertyOptional({
-    example: true,
-    description:
-      'Whether PPN applies to this invoice. Defaults to true for IDR invoices and false for non-IDR (export) invoices.',
-  })
-  @IsOptional()
-  @IsBoolean()
-  isTaxable?: boolean;
 
   @ApiPropertyOptional({ example: 'Payment due within 30 days' })
   @IsOptional()

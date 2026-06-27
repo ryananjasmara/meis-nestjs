@@ -9,10 +9,6 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
 });
 
-function itemRow(description: string, quantity: number, unitPrice: number) {
-  return { description, quantity, unitPrice, total: quantity * unitPrice };
-}
-
 function randomInt(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
@@ -153,129 +149,165 @@ const CUSTOMERS: CustomerSeed[] = [
   },
 ];
 
-type ItemSeed = {
+type ChargeCodeSeed = {
+  code: string;
   description: string;
+  isTaxable: boolean;
   minIdr: number;
   maxIdr: number;
   minUsd: number;
   maxUsd: number;
 };
 
-const ITEM_POOL: ItemSeed[] = [
+const CHARGE_CODES: ChargeCodeSeed[] = [
   {
+    code: 'PD001',
     description: 'Port dues and harbor fee',
+    isTaxable: true,
     minIdr: 1_500_000,
     maxIdr: 4_500_000,
     minUsd: 120,
     maxUsd: 350,
   },
   {
+    code: 'PIL01',
     description: 'Pilotage fee (in/out)',
+    isTaxable: true,
     minIdr: 2_000_000,
     maxIdr: 5_000_000,
     minUsd: 150,
     maxUsd: 400,
   },
   {
+    code: 'TOW01',
     description: 'Tug assistance / towage',
+    isTaxable: true,
     minIdr: 3_000_000,
     maxIdr: 8_000_000,
     minUsd: 250,
     maxUsd: 650,
   },
   {
+    code: 'MOR01',
     description: 'Mooring / unmooring service',
+    isTaxable: true,
     minIdr: 1_000_000,
     maxIdr: 2_500_000,
     minUsd: 80,
     maxUsd: 200,
   },
   {
+    code: 'HUS01',
     description: 'Husbandry agency fee',
+    isTaxable: true,
     minIdr: 5_000_000,
     maxIdr: 15_000_000,
     minUsd: 400,
     maxUsd: 1_200,
   },
   {
+    code: 'PDA01',
     description: 'Port disbursement account handling fee',
+    isTaxable: true,
     minIdr: 2_500_000,
     maxIdr: 6_000_000,
     minUsd: 200,
     maxUsd: 500,
   },
   {
+    code: 'STV01',
     description: 'Stevedoring charges',
+    isTaxable: true,
     minIdr: 8_000_000,
     maxIdr: 25_000_000,
     minUsd: 600,
     maxUsd: 2_000,
   },
   {
+    code: 'FWS01',
     description: 'Fresh water supply',
+    isTaxable: true,
     minIdr: 1_200_000,
     maxIdr: 3_000_000,
     minUsd: 100,
     maxUsd: 250,
   },
   {
+    code: 'BUN01',
     description: 'Bunker survey fee',
+    isTaxable: true,
     minIdr: 1_800_000,
     maxIdr: 4_000_000,
     minUsd: 150,
     maxUsd: 350,
   },
   {
+    code: 'CUS01',
     description: 'Customs clearance fee',
+    isTaxable: false,
     minIdr: 2_000_000,
     maxIdr: 5_500_000,
     minUsd: 180,
     maxUsd: 450,
   },
   {
+    code: 'CRW01',
     description: 'Crew change assistance',
+    isTaxable: false,
     minIdr: 3_500_000,
     maxIdr: 9_000_000,
     minUsd: 300,
     maxUsd: 750,
   },
   {
+    code: 'CGS01',
     description: 'Cargo survey fee',
+    isTaxable: true,
     minIdr: 2_200_000,
     maxIdr: 6_000_000,
     minUsd: 180,
     maxUsd: 500,
   },
   {
+    code: 'ANC01',
     description: 'Anchorage fee',
+    isTaxable: true,
     minIdr: 1_000_000,
     maxIdr: 3_000_000,
     minUsd: 90,
     maxUsd: 250,
   },
   {
+    code: 'LGT01',
     description: 'Light dues',
+    isTaxable: true,
     minIdr: 800_000,
     maxIdr: 2_000_000,
     minUsd: 70,
     maxUsd: 180,
   },
   {
+    code: 'QHC01',
     description: 'Quarantine and health clearance fee',
+    isTaxable: false,
     minIdr: 1_500_000,
     maxIdr: 3_500_000,
     minUsd: 130,
     maxUsd: 300,
   },
   {
+    code: 'CHN01',
     description: 'Ship chandlery / provisions supply',
+    isTaxable: true,
     minIdr: 4_000_000,
     maxIdr: 12_000_000,
     minUsd: 350,
     maxUsd: 1_000,
   },
   {
+    code: 'WST01',
     description: 'Garbage / waste disposal fee',
+    isTaxable: true,
     minIdr: 900_000,
     maxIdr: 2_200_000,
     minUsd: 80,
@@ -325,6 +357,23 @@ async function main() {
 
   const users = [admin, staff];
 
+  const chargeCodesByCode: Record<
+    string,
+    Awaited<ReturnType<typeof prisma.chargeCode.create>>
+  > = {};
+  for (const cc of CHARGE_CODES) {
+    const chargeCode = await prisma.chargeCode.upsert({
+      where: { code: cc.code },
+      update: {},
+      create: {
+        code: cc.code,
+        description: cc.description,
+        isTaxable: cc.isTaxable,
+      },
+    });
+    chargeCodesByCode[cc.code] = chargeCode;
+  }
+
   const customers: Array<
     Awaited<ReturnType<typeof prisma.customer.create>> & { currency: Currency }
   > = [];
@@ -353,17 +402,33 @@ async function main() {
 
     const itemCount = randomInt(1, 3);
     const items = Array.from({ length: itemCount }, () => {
-      const pool = pick(ITEM_POOL);
+      const pool = pick(CHARGE_CODES);
       const quantity = randomInt(1, 5);
       const unitPrice =
         currency === Currency.USD
           ? randomInt(pool.minUsd, pool.maxUsd)
           : randomInt(pool.minIdr, pool.maxIdr);
-      return itemRow(pool.description, quantity, unitPrice);
+      const total = quantity * unitPrice;
+      const usesChargeCode = Math.random() < 0.75;
+      const isTaxable = usesChargeCode
+        ? pool.isTaxable
+        : currency === Currency.IDR;
+      return {
+        description: pool.description,
+        quantity,
+        unitPrice,
+        total,
+        isTaxable,
+        chargeCodeId: usesChargeCode
+          ? chargeCodesByCode[pool.code].id
+          : undefined,
+      };
     });
     const totalAmount = items.reduce((sum, item) => sum + item.total, 0);
-    const isTaxable = currency === Currency.IDR;
-    const vatAmount = isTaxable ? totalAmount * CURRENT_VAT_RATE : 0;
+    const taxableAmount = items
+      .filter((item) => item.isTaxable)
+      .reduce((sum, item) => sum + item.total, 0);
+    const vatAmount = taxableAmount * CURRENT_VAT_RATE;
     const grandTotal = totalAmount + vatAmount;
 
     const dueOffsetDays = randomInt(-45, 45);
@@ -380,7 +445,6 @@ async function main() {
         exchangeRate,
         notes: i % 5 === 0 ? pick(NOTE_POOL) : undefined,
         totalAmount,
-        isTaxable,
         vatRate: CURRENT_VAT_RATE,
         vatAmount,
         grandTotal,

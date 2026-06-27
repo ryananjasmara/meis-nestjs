@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
@@ -70,6 +74,14 @@ export class CustomersService {
 
   async remove(id: string) {
     await this.findOne(id);
+    const invoiceCount = await this.prisma.invoice.count({
+      where: { customerId: id },
+    });
+    if (invoiceCount > 0) {
+      throw new BadRequestException(
+        'Cannot delete a customer that has existing invoices',
+      );
+    }
     return this.prisma.customer.delete({ where: { id } });
   }
 }

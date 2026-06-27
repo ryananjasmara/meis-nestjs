@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { CustomersModule } from './customers/customers.module';
 import { InvoicesModule } from './invoices/invoices.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { ChargeCodesModule } from './charge-codes/charge-codes.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     CustomersModule,
     InvoicesModule,
     DashboardModule,
+    ChargeCodesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
