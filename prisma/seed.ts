@@ -3,6 +3,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcryptjs';
 import { PrismaClient } from '../generated/prisma/client';
 import { Currency, InvoiceStatus, Role } from '../generated/prisma/enums';
+import { CURRENT_VAT_RATE } from '../src/common/constants/tax.constants';
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
@@ -361,6 +362,9 @@ async function main() {
       return itemRow(pool.description, quantity, unitPrice);
     });
     const totalAmount = items.reduce((sum, item) => sum + item.total, 0);
+    const isTaxable = currency === Currency.IDR;
+    const vatAmount = isTaxable ? totalAmount * CURRENT_VAT_RATE : 0;
+    const grandTotal = totalAmount + vatAmount;
 
     const dueOffsetDays = randomInt(-45, 45);
     const dueDate = new Date(Date.now() + dueOffsetDays * 24 * 60 * 60 * 1000);
@@ -376,6 +380,10 @@ async function main() {
         exchangeRate,
         notes: i % 5 === 0 ? pick(NOTE_POOL) : undefined,
         totalAmount,
+        isTaxable,
+        vatRate: CURRENT_VAT_RATE,
+        vatAmount,
+        grandTotal,
         items: { create: items },
       },
     });

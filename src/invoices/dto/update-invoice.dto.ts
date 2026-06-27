@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsNumber,
@@ -29,6 +30,14 @@ export class UpdateInvoiceDto {
   @IsNumber()
   @Min(0.000001)
   exchangeRate?: number;
+
+  @ApiPropertyOptional({
+    example: true,
+    description: 'Whether PPN applies to this invoice.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  isTaxable?: boolean;
 
   @ApiPropertyOptional({ example: 'Net 30' })
   @IsOptional()

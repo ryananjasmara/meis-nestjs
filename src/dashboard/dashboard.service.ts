@@ -28,14 +28,19 @@ export class DashboardService {
         where: {
           status: { in: [InvoiceStatus.PAID, ...OUTSTANDING_STATUSES] },
         },
-        select: { status: true, totalAmount: true, exchangeRate: true },
+        select: {
+          status: true,
+          totalAmount: true,
+          grandTotal: true,
+          exchangeRate: true,
+        },
       }),
       this.prisma.invoice.groupBy({
         by: ['currency', 'status'],
         where: {
           status: { in: [InvoiceStatus.PAID, ...OUTSTANDING_STATUSES] },
         },
-        _sum: { totalAmount: true },
+        _sum: { totalAmount: true, grandTotal: true },
       }),
       this.prisma.invoice.findMany({
         take: 5,
@@ -51,16 +56,20 @@ export class DashboardService {
       invoicesByStatus[group.status] = group._count._all;
     }
 
+    // Revenue recognized is the pre-tax subtotal: PPN collected from the
+    // customer is a liability owed to the tax office, not company income.
     const totalRevenue = conversionRows
       .filter((row) => row.status === InvoiceStatus.PAID)
       .reduce(
         (sum, row) => sum.plus(row.totalAmount.times(row.exchangeRate)),
         new Prisma.Decimal(0),
       );
+    // Outstanding (receivable) reflects what the customer actually still
+    // owes, which includes PPN.
     const outstandingAmount = conversionRows
       .filter((row) => OUTSTANDING_STATUSES.includes(row.status))
       .reduce(
-        (sum, row) => sum.plus(row.totalAmount.times(row.exchangeRate)),
+        (sum, row) => sum.plus(row.grandTotal.times(row.exchangeRate)),
         new Prisma.Decimal(0),
       );
 
@@ -74,11 +83,12 @@ export class DashboardService {
       { paid: Prisma.Decimal; outstanding: Prisma.Decimal }
     >;
     for (const group of currencyGroups) {
-      const amount = group._sum.totalAmount ?? new Prisma.Decimal(0);
       if (group.status === InvoiceStatus.PAID) {
+        const amount = group._sum.totalAmount ?? new Prisma.Decimal(0);
         revenueByCurrency[group.currency].paid =
           revenueByCurrency[group.currency].paid.plus(amount);
       } else if (OUTSTANDING_STATUSES.includes(group.status)) {
+        const amount = group._sum.grandTotal ?? new Prisma.Decimal(0);
         revenueByCurrency[group.currency].outstanding =
           revenueByCurrency[group.currency].outstanding.plus(amount);
       }

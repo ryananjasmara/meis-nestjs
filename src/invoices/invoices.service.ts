@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/client';
 import { Currency, InvoiceStatus } from '../../generated/prisma/enums';
+import { CURRENT_VAT_RATE } from '../common/constants/tax.constants';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { CreateInvoiceItemDto } from './dto/create-invoice-item.dto';
@@ -33,6 +34,13 @@ export class InvoicesService {
       dto.currency,
       dto.exchangeRate,
     );
+    const isTaxable = dto.isTaxable ?? currency === Currency.IDR;
+    const vatRate = new Prisma.Decimal(CURRENT_VAT_RATE);
+    const { vatAmount, grandTotal } = this.computeTax(
+      totalAmount,
+      isTaxable,
+      vatRate,
+    );
 
     return this.prisma.invoice.create({
       data: {
@@ -43,6 +51,10 @@ export class InvoicesService {
         exchangeRate,
         notes: dto.notes,
         totalAmount,
+        isTaxable,
+        vatRate,
+        vatAmount,
+        grandTotal,
         createdById: userId,
         items: { create: itemsData },
       },
@@ -121,6 +133,11 @@ export class InvoicesService {
         )
       : undefined;
 
+    const taxChanged = dto.isTaxable !== undefined;
+    const tax = taxChanged
+      ? this.computeTax(invoice.totalAmount, dto.isTaxable!, invoice.vatRate)
+      : undefined;
+
     return this.prisma.invoice.update({
       where: { id },
       data: {
@@ -129,6 +146,11 @@ export class InvoicesService {
         ...(resolved && {
           currency: resolved.currency,
           exchangeRate: resolved.exchangeRate,
+        }),
+        ...(tax && {
+          isTaxable: dto.isTaxable,
+          vatAmount: tax.vatAmount,
+          grandTotal: tax.grandTotal,
         }),
       },
       include: { customer: true, items: true },
@@ -222,16 +244,36 @@ export class InvoicesService {
     tx: Prisma.TransactionClient,
     invoiceId: string,
   ) {
+    const invoice = await tx.invoice.findUniqueOrThrow({
+      where: { id: invoiceId },
+    });
     const items = await tx.invoiceItem.findMany({ where: { invoiceId } });
     const totalAmount = items.reduce(
       (sum, item) => sum.plus(item.total),
       new Prisma.Decimal(0),
     );
+    const { vatAmount, grandTotal } = this.computeTax(
+      totalAmount,
+      invoice.isTaxable,
+      invoice.vatRate,
+    );
+
     return tx.invoice.update({
       where: { id: invoiceId },
-      data: { totalAmount },
+      data: { totalAmount, vatAmount, grandTotal },
       include: { customer: true, items: true },
     });
+  }
+
+  private computeTax(
+    totalAmount: Prisma.Decimal,
+    isTaxable: boolean,
+    vatRate: Prisma.Decimal,
+  ) {
+    const vatAmount = isTaxable
+      ? totalAmount.times(vatRate)
+      : new Prisma.Decimal(0);
+    return { vatAmount, grandTotal: totalAmount.plus(vatAmount) };
   }
 
   private toItemRow(dto: CreateInvoiceItemDto) {
