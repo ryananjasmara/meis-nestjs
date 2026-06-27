@@ -1,6 +1,6 @@
 # Mini ERP Invoicing System — Backend
 
-A NestJS + Prisma + PostgreSQL REST API for a mini ERP invoicing system: authentication, customer management, invoices with multi-currency and PPN, and dashboard summaries.
+A NestJS + Prisma + PostgreSQL REST API for a mini ERP invoicing system: authentication, customer management, a charge code master, invoices with multi-currency and per-item PPN, and dashboard summaries.
 
 ## Tech stack used
 
@@ -69,9 +69,10 @@ Defined in [`prisma/schema.prisma`](prisma/schema.prisma). Visual ERD: [`docs/ER
 Summary:
 
 - **User** (`id`, `email`, `password`, `name`, `role: ADMIN|STAFF`) — owns Customers and Invoices it created.
-- **Customer** (`id`, `name`, `email?`, `phone?`, `address?`, `createdById → User`) — has many Invoices.
-- **Invoice** (`id`, `invoiceNumber`, `status: DRAFT|SENT|PAID|OVERDUE|CANCELLED`, `issueDate`, `dueDate`, `currency: IDR|USD`, `exchangeRate`, `totalAmount`, `isTaxable`, `vatRate`, `vatAmount`, `grandTotal`, `customerId → Customer`, `createdById → User`) — has many InvoiceItems.
-- **InvoiceItem** (`id`, `description`, `quantity`, `unitPrice`, `total`, `invoiceId → Invoice`, cascade-deleted with its invoice).
+- **Customer** (`id`, `name`, `email?`, `phone?`, `address?`, `createdById → User`) — has many Invoices. Can't be deleted while it still has invoices.
+- **Invoice** (`id`, `invoiceNumber`, `status: DRAFT|SENT|PAID|OVERDUE|CANCELLED`, `issueDate`, `dueDate`, `currency: IDR|USD`, `exchangeRate`, `totalAmount`, `vatRate`, `vatAmount`, `grandTotal`, `customerId → Customer`, `createdById → User`) — has many InvoiceItems.
+- **InvoiceItem** (`id`, `description`, `quantity`, `unitPrice`, `total`, `isTaxable`, `invoiceId → Invoice`, `chargeCodeId? → ChargeCode`, cascade-deleted with its invoice). Tax is decided per item, not per invoice.
+- **ChargeCode** (`id`, `code`, `description`, `isTaxable`) — optional master list used as a template when adding an invoice item.
 
 ## API overview
 
@@ -79,6 +80,7 @@ Summary:
 |---|---|
 | Auth | `POST /auth/register`, `POST /auth/login` |
 | Customers | `POST /customers`, `GET /customers`, `GET /customers/:id`, `PATCH /customers/:id`, `DELETE /customers/:id` |
+| Charge codes | `POST /charge-codes`, `GET /charge-codes?search=`, `GET /charge-codes/:id`, `PATCH /charge-codes/:id`, `DELETE /charge-codes/:id` |
 | Invoices | `POST /invoices`, `GET /invoices?status=&customerId=&search=`, `GET /invoices/:id`, `PATCH /invoices/:id`, `PATCH /invoices/:id/status`, `POST /invoices/:id/items`, `PATCH /invoices/:id/items/:itemId`, `DELETE /invoices/:id/items/:itemId` |
 | Dashboard | `GET /dashboard/summary` |
 
@@ -91,9 +93,12 @@ All routes except `/auth/*` require an `Authorization: Bearer <token>` header. F
 - **Money stored as `Decimal`, not `Float`**, to avoid floating-point rounding errors.
 - **`Invoice.totalAmount` is denormalized** (computed when items change, not joined on every read) so list/dashboard queries stay cheap. Items remain the source of truth.
 - **Multi-currency (IDR/USD):** each invoice has its own `currency` and `exchangeRate`. The rate is a snapshot taken when the invoice is created (or edited while still `DRAFT`) — it is never re-derived from a "current" rate later, so past invoices and revenue reports don't shift if market rates change.
-- **PPN (VAT) is also snapshotted**, not computed from a live config value, for the same reason: changing the standard rate must only affect new invoices, never retroactively change old ones. `isTaxable` defaults to `true` for IDR invoices and `false` for non-IDR (export-of-services) invoices, but can be overridden per invoice while still `DRAFT`.
+- **PPN (VAT) is also snapshotted** (`Invoice.vatRate`), not computed from a live config value, for the same reason: changing the standard rate must only affect new invoices, never retroactively change old ones.
+- **Tax is decided per line item, not per invoice.** `InvoiceItem.isTaxable` defaults to the linked charge code's default, or to a currency heuristic (IDR=true, non-IDR=false) when there's no charge code — but it's editable per item. This lets one invoice mix taxable and zero-rated lines, which is common for export-of-services. `Invoice.vatAmount` only sums the taxable items.
+- **`ChargeCode` is just a template**, not a hard constraint — `InvoiceItem.chargeCodeId` is optional, so items can stay free-text and the charge code's `description`/`isTaxable` are only used to pre-fill values that the user can still edit.
 - **`totalAmount` vs `grandTotal`:** dashboard "Revenue" uses `totalAmount` (pre-tax — PPN collected is owed to the tax office, not company income), while "Outstanding" uses `grandTotal` (what the customer actually still owes, including PPN).
 - **Invoice numbers are generated server-side** (`INV-YYYYMMDD-NNNN`), not client-supplied, to guarantee uniqueness and a consistent format.
+- **Deleting a customer with existing invoices is rejected with a clear `400`**, instead of letting the database's foreign key constraint fail with a generic `500`.
 - **`RolesGuard` + `@Roles()` exist as infrastructure** for role-gating endpoints, though no endpoint currently restricts by role since the test spec didn't call for it.
 - **No soft-deletes / audit log** — out of scope for the test's stated requirements; `createdById` on Customer/Invoice gives basic provenance.
 
