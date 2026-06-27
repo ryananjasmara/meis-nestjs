@@ -39,7 +39,7 @@ export class UpdateInvoiceDto {
   @IsBoolean()
   isTaxable?: boolean;
 
-  @ApiPropertyOptional({ example: 'Net 30' })
+  @ApiPropertyOptional({ example: 'Follow-up payment after 30 days' })
   @IsOptional()
   @IsString()
   notes?: string;

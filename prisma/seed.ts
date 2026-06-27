@@ -284,7 +284,7 @@ const ITEM_POOL: ItemSeed[] = [
 ];
 
 const NOTE_POOL = [
-  'Net 30',
+  'Follow-up payment after 30 days',
   'Settlement upon vessel departure',
   'Disbursement account - final settlement',
   'Husbandry services - Tanjung Priok anchorage',
