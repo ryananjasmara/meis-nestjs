@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { InvoiceStatus } from '../../generated/prisma/enums';
+import { Prisma } from '../../generated/prisma/client';
+import { Currency, InvoiceStatus } from '../../generated/prisma/enums';
 import { PrismaService } from '../prisma/prisma.service';
+
+const OUTSTANDING_STATUSES: InvoiceStatus[] = [
+  InvoiceStatus.SENT,
+  InvoiceStatus.OVERDUE,
+];
 
 @Injectable()
 export class DashboardService {
@@ -11,20 +17,30 @@ export class DashboardService {
       totalCustomers,
       totalInvoices,
       statusGroups,
-      paidAggregate,
-      outstandingAggregate,
+      conversionRows,
+      currencyGroups,
       recentInvoices,
     ] = await Promise.all([
       this.prisma.customer.count(),
       this.prisma.invoice.count(),
       this.prisma.invoice.groupBy({ by: ['status'], _count: { _all: true } }),
-      this.prisma.invoice.aggregate({
-        where: { status: InvoiceStatus.PAID },
-        _sum: { totalAmount: true },
+      this.prisma.invoice.findMany({
+        where: {
+          status: { in: [InvoiceStatus.PAID, ...OUTSTANDING_STATUSES] },
+        },
+        select: {
+          status: true,
+          totalAmount: true,
+          grandTotal: true,
+          exchangeRate: true,
+        },
       }),
-      this.prisma.invoice.aggregate({
-        where: { status: { in: [InvoiceStatus.SENT, InvoiceStatus.OVERDUE] } },
-        _sum: { totalAmount: true },
+      this.prisma.invoice.groupBy({
+        by: ['currency', 'status'],
+        where: {
+          status: { in: [InvoiceStatus.PAID, ...OUTSTANDING_STATUSES] },
+        },
+        _sum: { totalAmount: true, grandTotal: true },
       }),
       this.prisma.invoice.findMany({
         take: 5,
@@ -40,11 +56,50 @@ export class DashboardService {
       invoicesByStatus[group.status] = group._count._all;
     }
 
+    // Revenue recognized is the pre-tax subtotal: PPN collected from the
+    // customer is a liability owed to the tax office, not company income.
+    const totalRevenue = conversionRows
+      .filter((row) => row.status === InvoiceStatus.PAID)
+      .reduce(
+        (sum, row) => sum.plus(row.totalAmount.times(row.exchangeRate)),
+        new Prisma.Decimal(0),
+      );
+    // Outstanding (receivable) reflects what the customer actually still
+    // owes, which includes PPN.
+    const outstandingAmount = conversionRows
+      .filter((row) => OUTSTANDING_STATUSES.includes(row.status))
+      .reduce(
+        (sum, row) => sum.plus(row.grandTotal.times(row.exchangeRate)),
+        new Prisma.Decimal(0),
+      );
+
+    const revenueByCurrency = Object.fromEntries(
+      Object.values(Currency).map((currency) => [
+        currency,
+        { paid: new Prisma.Decimal(0), outstanding: new Prisma.Decimal(0) },
+      ]),
+    ) as Record<
+      Currency,
+      { paid: Prisma.Decimal; outstanding: Prisma.Decimal }
+    >;
+    for (const group of currencyGroups) {
+      if (group.status === InvoiceStatus.PAID) {
+        const amount = group._sum.totalAmount ?? new Prisma.Decimal(0);
+        revenueByCurrency[group.currency].paid =
+          revenueByCurrency[group.currency].paid.plus(amount);
+      } else if (OUTSTANDING_STATUSES.includes(group.status)) {
+        const amount = group._sum.grandTotal ?? new Prisma.Decimal(0);
+        revenueByCurrency[group.currency].outstanding =
+          revenueByCurrency[group.currency].outstanding.plus(amount);
+      }
+    }
+
     return {
       totalCustomers,
       totalInvoices,
-      totalRevenue: paidAggregate._sum.totalAmount ?? 0,
-      outstandingAmount: outstandingAggregate._sum.totalAmount ?? 0,
+      totalRevenue,
+      outstandingAmount,
+      revenueByCurrency,
       invoicesByStatus,
       recentInvoices,
     };

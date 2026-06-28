@@ -1,5 +1,13 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsOptional, IsString } from 'class-validator';
+import {
+  IsDateString,
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
+import { Currency } from '../../../generated/prisma/enums';
 
 export class UpdateInvoiceDto {
   @ApiPropertyOptional({ example: '2026-07-15' })
@@ -7,7 +15,22 @@ export class UpdateInvoiceDto {
   @IsDateString()
   dueDate?: string;
 
-  @ApiPropertyOptional({ example: 'Net 30' })
+  @ApiPropertyOptional({ enum: Currency })
+  @IsOptional()
+  @IsEnum(Currency)
+  currency?: Currency;
+
+  @ApiPropertyOptional({
+    example: 16000,
+    description:
+      'IDR rate per unit of currency, required when currency is not IDR',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0.000001)
+  exchangeRate?: number;
+
+  @ApiPropertyOptional({ example: 'Follow-up payment after 30 days' })
   @IsOptional()
   @IsString()
   notes?: string;

@@ -74,16 +74,14 @@ export class CustomersService {
 
   async remove(id: string) {
     await this.findOne(id);
-
     const invoiceCount = await this.prisma.invoice.count({
       where: { customerId: id },
     });
     if (invoiceCount > 0) {
       throw new BadRequestException(
-        `Cannot delete this customer: ${invoiceCount} invoice(s) still reference it.`,
+        'Cannot delete a customer that has existing invoices',
       );
     }
-
     return this.prisma.customer.delete({ where: { id } });
   }
 }
